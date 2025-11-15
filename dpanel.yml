@@ -17,6 +17,11 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
 networks:
   caddy:

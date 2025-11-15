@@ -1,7 +1,7 @@
 services:
   caddy:
     image: lucaslorentz/caddy-docker-proxy:ci-alpine
-    container_name: caddy-proxy
+    container_name: caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -23,6 +23,11 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
 networks:
   caddy:
