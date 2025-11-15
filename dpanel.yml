@@ -1,0 +1,23 @@
+services:
+  dpanel:
+    image: dpanel/dpanel:lite
+    container_name: dpanel
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /data/dpanel:/dpanel
+    networks:
+      - caddy
+    labels:
+      caddy: dpanel.ceyewan.xyz
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+networks:
+  caddy:
+    external: true

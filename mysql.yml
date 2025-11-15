@@ -1,0 +1,52 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: genesis-mysql
+    hostname: mysql
+    restart: unless-stopped
+    
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+    # 优化的启动参数
+    command:
+      - mysqld
+      - --performance_schema=OFF
+      - --innodb_buffer_pool_size=256M
+      - --max_connections=50
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    
+    volumes:
+      - mysql-data:/var/lib/mysql
+    
+    networks:
+      - genesis-net
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 768M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+    ports:
+      - "127.0.0.1:3306:3306"
+
+networks:
+  genesis-net:
+    external: true
+    
+volumes:
+  mysql-data:
