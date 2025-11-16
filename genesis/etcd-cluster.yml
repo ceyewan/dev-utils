@@ -4,7 +4,7 @@
 # 描述: 用于生产环境或需要高可用性的ETCD三节点集群
 # 网络: 使用 genesis-net 网络，集群内部通过主机名通信
 # 存储: 每个节点使用独立的Docker卷进行数据持久化
-# 访问: 仅暴露etcd1的客户端端口2379到宿主机，其他节点通过内部网络访问
+# 访问: 仅暴露etcd-1的客户端端口2379到宿主机，其他节点通过内部网络访问
 # 用途: 为应用程序提供高可用的分布式键值存储服务
 # 特点: 三节点集群，支持自动故障转移和数据一致性
 # ====================================================================================
@@ -52,15 +52,15 @@ x-etcd-common: &etcd-common
 
 services:
   # ===== ETCD 节点 1 (主节点 + 客户端访问入口) =====
-  etcd1:
+  etcd-1:
     # 继承共享配置模板
     <<: *etcd-common
     
     # 容器名称，便于识别和管理
-    container_name: genesis-etcd1
+    container_name: genesis-etcd-1
     
     # 主机名，用于集群内部通信和服务发现
-    hostname: etcd1
+    hostname: etcd-1
     
     # 环境变量配置：定义集群行为和节点属性
     environment:
@@ -68,7 +68,7 @@ services:
       ETCDCTL_API: 3
       
       # 节点名称，在集群中唯一标识
-      ETCD_NAME: etcd1
+      ETCD_NAME: etcd-1
       
       # 集群令牌，确保集群成员属于同一集群
       ETCD_INITIAL_CLUSTER_TOKEN: genesis-etcd-cluster
@@ -78,13 +78,13 @@ services:
       
       # 初始集群成员列表：包含所有3个节点的peer地址
       # 格式：节点名=http://主机名:2380
-      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      ETCD_INITIAL_CLUSTER: etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
       
       # 本节点peer地址，用于集群内部通信
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd1:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd-1:2380
       
       # 本节点客户端地址，告知客户端如何访问本节点
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd1:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-1:2379
       
       # 监听peer地址，允许所有网络接口的peer连接
       ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
@@ -106,46 +106,46 @@ services:
       # 使用Docker卷便于备份和迁移，与宿主机解耦
       - etcd-data-1:/etcd-data
     
-    # 端口映射：仅etcd1暴露客户端端口，作为集群访问入口
+    # 端口映射：仅etcd-1暴露客户端端口，作为集群访问入口
     # 限制为本地访问，提高安全性
     ports:
       - "127.0.0.1:2379:2379"
-    # 说明：etcd2和etcd3不暴露端口，通过内部网络访问
+    # 说明：etcd-2和etcd-3不暴露端口，通过内部网络访问
     # 这样既保证了集群通信，又减少了攻击面
 
   # ===== ETCD 节点 2 (集群成员) =====
-  etcd2:
+  etcd-2:
     # 继承共享配置模板
     <<: *etcd-common
     
     # 容器名称，便于识别和管理
-    container_name: genesis-etcd2
+    container_name: genesis-etcd-2
     
     # 主机名，用于集群内部通信和服务发现
-    hostname: etcd2
+    hostname: etcd-2
     
-    # 环境变量配置：与etcd1类似，但针对本节点定制
+    # 环境变量配置：与etcd-1类似，但针对本节点定制
     environment:
       # 使用ETCD API版本3
       ETCDCTL_API: 3
       
       # 节点名称，在集群中唯一标识
-      ETCD_NAME: etcd2
+      ETCD_NAME: etcd-2
       
-      # 集群令牌，必须与etcd1相同
+      # 集群令牌，必须与etcd-1相同
       ETCD_INITIAL_CLUSTER_TOKEN: genesis-etcd-cluster
       
       # 初始集群状态：new表示新建集群
       ETCD_INITIAL_CLUSTER_STATE: new
       
-      # 初始集群成员列表：必须与etcd1完全相同
-      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      # 初始集群成员列表：必须与etcd-1完全相同
+      ETCD_INITIAL_CLUSTER: etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
       
       # 本节点peer地址
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd2:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd-2:2380
       
       # 本节点客户端地址
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd2:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-2:2379
       
       # 监听peer地址
       ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
@@ -165,41 +165,41 @@ services:
     # 数据卷配置
     volumes:
       - etcd-data-2:/etcd-data
-    # 注意：etcd2不暴露任何端口到宿主机，通过内部网络访问
+    # 注意：etcd-2不暴露任何端口到宿主机，通过内部网络访问
 
   # ===== ETCD 节点 3 (集群成员) =====
-  etcd3:
+  etcd-3:
     # 继承共享配置模板
     <<: *etcd-common
     
     # 容器名称，便于识别和管理
-    container_name: genesis-etcd3
+    container_name: genesis-etcd-3
     
     # 主机名，用于集群内部通信和服务发现
-    hostname: etcd3
+    hostname: etcd-3
     
-    # 环境变量配置：与etcd1类似，但针对本节点定制
+    # 环境变量配置：与etcd-1类似，但针对本节点定制
     environment:
       # 使用ETCD API版本3
       ETCDCTL_API: 3
       
       # 节点名称，在集群中唯一标识
-      ETCD_NAME: etcd3
+      ETCD_NAME: etcd-3
       
-      # 集群令牌，必须与etcd1相同
+      # 集群令牌，必须与etcd-1相同
       ETCD_INITIAL_CLUSTER_TOKEN: genesis-etcd-cluster
       
       # 初始集群状态：new表示新建集群
       ETCD_INITIAL_CLUSTER_STATE: new
       
-      # 初始集群成员列表：必须与etcd1完全相同
-      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      # 初始集群成员列表：必须与etcd-1完全相同
+      ETCD_INITIAL_CLUSTER: etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380,etcd-3=http://etcd-3:2380
       
       # 本节点peer地址
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd3:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd-3:2380
       
       # 本节点客户端地址
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd3:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-3:2379
       
       # 监听peer地址
       ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
@@ -219,7 +219,7 @@ services:
     # 数据卷配置
     volumes:
       - etcd-data-3:/etcd-data
-    # 注意：etcd3不暴露任何端口到宿主机，通过内部网络访问
+    # 注意：etcd-3不暴露任何端口到宿主机，通过内部网络访问
 
 # ====================================================================================
 # 网络和存储配置
@@ -236,13 +236,13 @@ networks:
 # 存储卷定义：数据持久化存储
 volumes:
   etcd-data-1:
-    # 说明：etcd1的数据卷，存储节点1的所有数据
+    # 说明：etcd-1的数据卷，存储节点1的所有数据
     # 优点：与宿主机解耦，便于备份和容器迁移
     # 管理：docker volume ls / docker volume inspect etcd-data-1
   etcd-data-2:
-    # 说明：etcd2的数据卷，存储节点2的所有数据
+    # 说明：etcd-2的数据卷，存储节点2的所有数据
   etcd-data-3:
-    # 说明：etcd3的数据卷，存储节点3的所有数据
+    # 说明：etcd-3的数据卷，存储节点3的所有数据
 
 # ====================================================================================
 # 使用说明和运维指南
@@ -254,27 +254,27 @@ volumes:
 #   docker compose -f etcd-cluster.yml ps
 #
 # 查看节点成员列表:
-#   docker exec -it genesis-etcd1 etcdctl member list
+#   docker exec -it genesis-etcd-1 etcdctl member list
 #
 # 检查集群健康状态:
-#   docker exec -it genesis-etcd1 etcdctl endpoint health --cluster
+#   docker exec -it genesis-etcd-1 etcdctl endpoint health --cluster
 #
 # 查看集群端点状态:
-#   docker exec -it genesis-etcd1 etcdctl endpoint status --cluster
+#   docker exec -it genesis-etcd-1 etcdctl endpoint status --cluster
 #
-# 数据操作（通过etcd1访问整个集群）:
-#   docker exec -it genesis-etcd1 etcdctl put mykey "my value"
-#   docker exec -it genesis-etcd1 etcdctl get mykey
+# 数据操作（通过etcd-1访问整个集群）:
+#   docker exec -it genesis-etcd-1 etcdctl put mykey "my value"
+#   docker exec -it genesis-etcd-1 etcdctl get mykey
 #
 # 查看日志:
-#   docker compose -f etcd-cluster.yml logs -f etcd1
+#   docker compose -f etcd-cluster.yml logs -f etcd-1
 #
 # 停止集群:
 #   docker compose -f etcd-cluster.yml down
 #
 # 数据备份（备份整个集群）:
-#   docker exec -it genesis-etcd1 etcdctl snapshot save /etcd-data/backup.db
-#   docker cp genesis-etcd1:/etcd-data/backup.db ./backup.db
+#   docker exec -it genesis-etcd-1 etcdctl snapshot save /etcd-data/backup.db
+#   docker cp genesis-etcd-1:/etcd-data/backup.db ./backup.db
 #
 # 集群扩容（添加新节点）:
 #   1. 添加新成员: etcdctl member add etcd4 --peer-urls=http://etcd4:2380

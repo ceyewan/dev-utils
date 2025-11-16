@@ -28,6 +28,13 @@ x-nats-common: &nats-common
       max-size: "5m"  # 单个日志文件最大5MB
       max-file: "2"   # 保留2个日志文件，循环使用
 
+  healthcheck:
+    test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+    interval: 15s     # 每15秒检查一次
+    timeout: 5s       # 超时时间5秒
+    retries: 3        # 失败重试3次
+    start_period: 10s # 启动等待时间
+
 services:
   # ===== NATS 节点 1 (主节点 + 客户端访问入口) =====
   nats-1:

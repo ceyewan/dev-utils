@@ -31,11 +31,8 @@ services:
       # 节点名称，在集群中唯一标识（虽然是单机，但保持一致性）
       - "--name=genesis-nats"
       
-      # 监听地址：允许所有IP访问客户端端口
-      - "--listen=0.0.0.0:4222"
-      
       # HTTP监控端口：提供Web界面和REST API
-      - "--http=8222"
+      - "--http_port=8222"
       
       # 启用JetStream：NATS的流处理功能，支持持久化消息
       - "--js"
@@ -79,7 +76,7 @@ services:
     
     # 健康检查：定期检查服务状态
     healthcheck:
-      test: ["CMD", "nats", "server", "check", "--connect", "nats://localhost:4222"]  # 测试NATS是否响应
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
       interval: 15s     # 每15秒检查一次
       timeout: 5s       # 超时时间5秒
       retries: 3        # 失败重试3次

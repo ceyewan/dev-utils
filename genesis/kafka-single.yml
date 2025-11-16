@@ -51,8 +51,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      # 使用localhost，确保客户端从宿主机可以连接
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # 使用主机名，便于其他容器访问
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       
       # 控制器监听器名称：指定用于控制器通信的监听器
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -86,7 +86,7 @@ services:
     
     # 健康检查：定期检查服务状态
     healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]  # 测试Kafka是否响应
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]  # 测试Kafka是否响应
       interval: 30s     # 每30秒检查一次，给服务足够响应时间
       timeout: 10s      # 超时时间10秒
       retries: 3        # 失败重试3次

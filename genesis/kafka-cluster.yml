@@ -24,13 +24,21 @@ x-kafka-common: &kafka-common
   networks:
     - genesis-net
   
-  # 健康检查：定期检查服务状态
+  # 资源限制：防止资源耗尽影响宿主机
+  deploy:
+    resources:
+      limits:
+        memory: 1G      # 最大内存限制
+      reservations:
+        memory: 512M    # 最小内存预留
+  
+  # 健康检查：所有节点容器内都监听 9092，可以共享此配置
   healthcheck:
-    test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]  # 测试Kafka是否响应
-    interval: 30s     # 每30秒检查一次，给服务足够响应时间
-    timeout: 10s      # 超时时间10秒
-    retries: 3        # 失败重试3次
-    start_period: 60s # 启动等待时间，Kafka启动较慢
+    test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
   
   # 日志配置：限制日志大小，防止磁盘空间耗尽
   logging:
@@ -52,11 +60,10 @@ services:
     hostname: kafka-1
     
     # 端口映射：仅kafka-1暴露客户端端口，作为集群访问入口
-    # 19092: Kafka客户端端口，用于生产者和消费者连接
-    # 19093: 控制器端口，KRaft模式下用于集群通信
+    # 宿主机9092映射到容器9092，宿主机9093映射到容器9093
     ports:
-      - "127.0.0.1:19092:19092"  # 仅本地访问，提高安全性
-      - "127.0.0.1:19093:19093"  # 控制器端口，同样限制为本地访问
+      - "127.0.0.1:9092:9092"   # 仅本地访问，提高安全性
+      # - "127.0.0.1:9093:9093"   # 控制器端口，同样限制为本地访问
     # 说明：kafka-2和kafka-3不暴露端口，通过内部网络访问
     
     # 环境变量配置：定义Kafka broker行为和集群属性
@@ -69,14 +76,14 @@ services:
       
       # 控制器投票者：定义参与控制器选举的所有节点
       # 格式：节点ID@主机名:控制器端口
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093,2@kafka-2:29093,3@kafka-3:39093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
       
-      # 监听器配置：定义Kafka监听的网络地址和端口
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:19093
+      # 监听器配置：定义Kafka监听的网络地址和端口（容器内使用标准端口）
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      # 使用localhost，确保客户端从宿主机可以连接
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19092
+      # 使用主机名，便于集群内其他容器访问（宿主机通过端口映射访问）
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
       
       # 控制器监听器名称：指定用于控制器通信的监听器
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -105,14 +112,6 @@ services:
     volumes:
       # 使用Docker卷便于备份和迁移，与宿主机解耦
       - kafka-cluster-data-1:/var/lib/kafka/data
-    
-    # 资源限制：防止资源耗尽影响宿主机
-    deploy:
-      resources:
-        limits:
-          memory: 1G      # 最大内存限制
-        reservations:
-          memory: 512M    # 最小内存预留
 
   # ===== Kafka 节点 2 (集群成员) =====
   kafka-2:
@@ -129,8 +128,8 @@ services:
     # 这样可以减少攻击面，提高安全性
     # 如果需要在宿主机直接访问，可以取消下面的注释
     # ports:
-    #   - "127.0.0.1:29092:29092"
-    #   - "127.0.0.1:29093:29093"
+    #   - "127.0.0.1:29092:9092"
+    #   - "127.0.0.1:29093:9093"
     
     # 环境变量配置：与kafka-1类似，但针对本节点定制
     environment:
@@ -141,13 +140,13 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       
       # 控制器投票者：必须与kafka-1完全相同
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093,2@kafka-2:29093,3@kafka-3:39093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
       
-      # 监听器配置：针对本节点的端口
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+      # 监听器配置：容器内使用标准端口
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092
       
       # 控制器监听器名称
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -175,14 +174,6 @@ services:
     # 数据卷配置
     volumes:
       - kafka-cluster-data-2:/var/lib/kafka/data
-    
-    # 资源限制
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
 
   # ===== Kafka 节点 3 (集群成员) =====
   kafka-3:
@@ -211,13 +202,13 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       
       # 控制器投票者：必须与kafka-1完全相同
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093,2@kafka-2:29093,3@kafka-3:39093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
       
-      # 监听器配置：针对本节点的端口
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:39092,CONTROLLER://0.0.0.0:39093
+      # 监听器配置：容器内使用标准端口
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:39092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9092
       
       # 控制器监听器名称
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -245,14 +236,6 @@ services:
     # 数据卷配置
     volumes:
       - kafka-cluster-data-3:/var/lib/kafka/data
-    
-    # 资源限制
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
 
 # ====================================================================================
 # 网络和存储配置
