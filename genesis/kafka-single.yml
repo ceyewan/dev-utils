@@ -1,0 +1,162 @@
+# ====================================================================================
+# Apache Kafka 单机版配置文件
+# ====================================================================================
+# 描述: 用于开发和测试环境的单节点Kafka服务
+# 网络: 使用 genesis-net 网络，与基础设施服务通信
+# 存储: 使用Docker卷进行数据持久化
+# 访问: 仅暴露客户端端口9092到宿主机，限制为127.0.0.1访问
+# 特点: 支持KRaft模式，简化部署
+# 用途: 为应用程序提供消息队列服务
+# ====================================================================================
+
+services:
+  # ===== Kafka 单节点服务 =====
+  kafka:
+    # 使用官方Apache Kafka镜像，latest标签获取最新稳定版本
+    image: apache/kafka:latest
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-kafka-single
+    
+    # 主机名，用于网络内部通信和服务发现
+    hostname: kafka
+    
+    # 重启策略：除非手动停止，否则总是自动重启
+    restart: unless-stopped
+    
+    # 端口映射：仅暴露客户端端口，限制为本地访问提高安全性
+    # 9092: Kafka客户端端口，用于生产者和消费者连接
+    # 9093: 控制器端口，KRaft模式下用于集群通信（单机模式也需要）
+    ports:
+      - "127.0.0.1:9092:9092"  # 仅本地访问，提高安全性
+      # - "127.0.0.1:9093:9093"  # 控制器端口，同样限制为本地访问
+    
+    # 环境变量配置：定义Kafka broker行为和集群属性
+    environment:
+      # 节点ID：在集群中唯一标识，单机模式固定为1
+      KAFKA_NODE_ID: 1
+      
+      # 进程角色：同时作为broker和controller，KRaft模式下的角色定义
+      # broker: 处理客户端请求，存储和复制数据
+      # controller: 管理集群元数据，协调分区分配
+      KAFKA_PROCESS_ROLES: broker,controller
+      
+      # 控制器投票者：定义参与控制器选举的节点
+      # 格式：节点ID@主机名:控制器端口
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      
+      # 监听器配置：定义Kafka监听的网络地址和端口
+      # PLAINTEXT: 客户端连接监听器，允许所有IP访问（容器内）
+      # CONTROLLER: 控制器通信监听器，用于KRaft模式
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      
+      # 广播监听器：告知客户端如何连接到此broker
+      # 使用localhost，确保客户端从宿主机可以连接
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      
+      # 控制器监听器名称：指定用于控制器通信的监听器
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # 监听器安全协议映射：定义每个监听器的安全协议
+      # PLAINTEXT: 明文传输，适合内网环境
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      
+      # 集群ID：唯一标识此Kafka集群，KRaft模式必需
+      # 使用预生成的UUID，确保集群标识一致性
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID_SINGLE}
+      
+      # 分区配置：默认分区数和副本因子
+      KAFKA_NUM_PARTITIONS: 3                    # 默认主题分区数，提高并行处理能力
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1        # 默认副本因子，单机模式只能为1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # 偏移量主题副本因子
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1  # 事务状态日志副本因子
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1     # 事务状态日志最小ISR数
+      
+      # JVM堆内存配置：根据容器资源限制调整
+      KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"  # 最大和初始堆内存都设置为1GB
+    
+    # 数据卷配置：数据持久化存储
+    volumes:
+      # 使用Docker卷便于备份和迁移，与宿主机解耦
+      - kafka-single-data:/var/lib/kafka/data
+    
+    # 网络配置：加入基础设施网络
+    networks:
+      - genesis-net
+    
+    # 健康检查：定期检查服务状态
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]  # 测试Kafka是否响应
+      interval: 30s     # 每30秒检查一次，给服务足够响应时间
+      timeout: 10s      # 超时时间10秒
+      retries: 3        # 失败重试3次
+      start_period: 60s # 启动等待时间，Kafka启动较慢
+    
+    # 日志配置：限制日志大小，防止磁盘空间耗尽
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"  # 单个日志文件最大10MB，比基础服务稍大
+        max-file: "3"    # 保留3个日志文件，循环使用
+
+# ====================================================================================
+# 网络和存储配置
+# ====================================================================================
+
+# 网络定义：使用外部已创建的genesis-net网络
+networks:
+  genesis-net:
+    external: true
+    # 说明：genesis-net是基础设施网络，所有基础服务都在此网络中
+    # 优点：与MySQL、Redis等基础设施服务处于同一网络，便于集成
+    # 创建命令：docker network create genesis-net
+
+# 存储卷定义：数据持久化存储
+volumes:
+  kafka-single-data:
+    # 说明：Kafka数据卷，存储所有主题消息和元数据
+    # 优点：与宿主机解耦，便于备份和容器迁移
+    # 管理：docker volume ls / docker volume inspect kafka-single-data
+    # 注意：数据包含所有消息，重要数据请定期备份
+
+# ====================================================================================
+# 使用说明和运维指南
+# ====================================================================================
+# 启动服务:
+#   docker compose -f kafka-single.yml up -d
+#
+# 查看状态:
+#   docker compose -f kafka-single.yml ps
+#
+# 查看日志:
+#   docker compose -f kafka-single.yml logs -f
+#
+# 创建测试主题:
+#   docker exec -it genesis-kafka-single kafka-topics.sh --create --topic test-topic --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+#
+# 查看主题列表:
+#   docker exec -it genesis-kafka-single kafka-topics.sh --list --bootstrap-server localhost:9092
+#
+# 发送测试消息:
+#   docker exec -it genesis-kafka-single kafka-console-producer.sh --topic test-topic --bootstrap-server localhost:9092
+#   # 然后输入消息内容，按Ctrl+C结束
+#
+# 接收测试消息:
+#   docker exec -it genesis-kafka-single kafka-console-consumer.sh --topic test-topic --from-beginning --bootstrap-server localhost:9092
+#
+# 查看主题详情:
+#   docker exec -it genesis-kafka-single kafka-topics.sh --describe --topic test-topic --bootstrap-server localhost:9092
+#
+# 停止服务:
+#   docker compose -f kafka-single.yml down
+#
+# 数据备份:
+#   # Kafka数据存储在卷中，可以通过卷备份
+#   docker run --rm -v kafka-single-data:/data -v $(pwd):/backup alpine tar czf /backup/kafka-data-backup.tar.gz /data
+#
+# 性能调优:
+#   - 根据消息量和消费速度调整分区数
+#   - 监控磁盘I/O性能，Kafka对磁盘性能敏感
+#   - 考虑调整JVM堆内存大小基于实际负载
+#   - 生产环境建议设置合适的日志保留策略
+# ====================================================================================

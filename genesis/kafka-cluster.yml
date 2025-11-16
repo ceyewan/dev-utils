@@ -1,0 +1,334 @@
+# ====================================================================================
+# Apache Kafka 三节点集群配置文件
+# ====================================================================================
+# 描述: 用于生产环境或需要高可用性的Kafka三节点集群
+# 网络: 使用 genesis-net 网络，与基础设施服务通信
+# 存储: 每个节点使用独立的Docker卷进行数据持久化
+# 访问: 仅暴露kafka-1的客户端端口19092到宿主机，其他节点通过内部网络访问
+# 特点: 三节点集群，支持数据复制和故障转移，使用KRaft模式
+# 用途: 为应用程序提供高可用的分布式消息队列服务
+#
+# 注意: 本配置使用Docker Compose规范格式，无需version声明
+# 兼容Compose v2.x，支持现代特性和最佳实践
+# ====================================================================================
+
+# YAML锚点配置：定义共享配置模板，减少重复代码
+x-kafka-common: &kafka-common
+  # 使用官方Apache Kafka镜像，latest标签获取最新稳定版本
+  image: apache/kafka:latest
+  
+  # 重启策略：除非手动停止，否则总是自动重启
+  restart: unless-stopped
+  
+  # 网络配置：加入基础设施网络
+  networks:
+    - genesis-net
+  
+  # 健康检查：定期检查服务状态
+  healthcheck:
+    test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]  # 测试Kafka是否响应
+    interval: 30s     # 每30秒检查一次，给服务足够响应时间
+    timeout: 10s      # 超时时间10秒
+    retries: 3        # 失败重试3次
+    start_period: 60s # 启动等待时间，Kafka启动较慢
+  
+  # 日志配置：限制日志大小，防止磁盘空间耗尽
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"  # 单个日志文件最大10MB，比基础服务稍大
+      max-file: "3"    # 保留3个日志文件，循环使用
+
+services:
+  # ===== Kafka 节点 1 (主节点 + 客户端访问入口) =====
+  kafka-1:
+    # 继承共享配置模板
+    <<: *kafka-common
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-kafka-1
+    
+    # 主机名，用于集群内部通信和服务发现
+    hostname: kafka-1
+    
+    # 端口映射：仅kafka-1暴露客户端端口，作为集群访问入口
+    # 19092: Kafka客户端端口，用于生产者和消费者连接
+    # 19093: 控制器端口，KRaft模式下用于集群通信
+    ports:
+      - "127.0.0.1:19092:19092"  # 仅本地访问，提高安全性
+      - "127.0.0.1:19093:19093"  # 控制器端口，同样限制为本地访问
+    # 说明：kafka-2和kafka-3不暴露端口，通过内部网络访问
+    
+    # 环境变量配置：定义Kafka broker行为和集群属性
+    environment:
+      # 节点ID：在集群中唯一标识
+      KAFKA_NODE_ID: 1
+      
+      # 进程角色：同时作为broker和controller，KRaft模式下的角色定义
+      KAFKA_PROCESS_ROLES: broker,controller
+      
+      # 控制器投票者：定义参与控制器选举的所有节点
+      # 格式：节点ID@主机名:控制器端口
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093,2@kafka-2:29093,3@kafka-3:39093
+      
+      # 监听器配置：定义Kafka监听的网络地址和端口
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:19093
+      
+      # 广播监听器：告知客户端如何连接到此broker
+      # 使用localhost，确保客户端从宿主机可以连接
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19092
+      
+      # 控制器监听器名称：指定用于控制器通信的监听器
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # 监听器安全协议映射：定义每个监听器的安全协议
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      
+      # broker间监听器名称：指定用于broker间通信的监听器
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # 集群ID：唯一标识此Kafka集群，KRaft模式必需
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID_CLUSTER}
+      
+      # 集群优化配置：适合生产环境的参数设置
+      KAFKA_NUM_PARTITIONS: 6                    # 增加分区数，提高并行处理能力
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3        # 默认副本因子，确保数据冗余
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3  # 偏移量主题副本因子，高可用配置
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3  # 事务状态日志副本因子
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2     # 事务状态日志最小ISR数
+      KAFKA_MIN_INSYNC_REPLICAS: 2               # 最小同步副本数，平衡一致性和可用性
+      
+      # JVM堆内存配置：根据容器资源限制调整，集群模式使用较小内存
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"      # 最大和初始堆内存都设置为512MB
+    
+    # 数据卷配置：数据持久化存储
+    volumes:
+      # 使用Docker卷便于备份和迁移，与宿主机解耦
+      - kafka-cluster-data-1:/var/lib/kafka/data
+    
+    # 资源限制：防止资源耗尽影响宿主机
+    deploy:
+      resources:
+        limits:
+          memory: 1G      # 最大内存限制
+        reservations:
+          memory: 512M    # 最小内存预留
+
+  # ===== Kafka 节点 2 (集群成员) =====
+  kafka-2:
+    # 继承共享配置模板
+    <<: *kafka-common
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-kafka-2
+    
+    # 主机名，用于集群内部通信和服务发现
+    hostname: kafka-2
+    
+    # 端口映射：kafka-2不暴露端口到宿主机，通过内部网络访问
+    # 这样可以减少攻击面，提高安全性
+    # 如果需要在宿主机直接访问，可以取消下面的注释
+    # ports:
+    #   - "127.0.0.1:29092:29092"
+    #   - "127.0.0.1:29093:29093"
+    
+    # 环境变量配置：与kafka-1类似，但针对本节点定制
+    environment:
+      # 节点ID：在集群中唯一标识
+      KAFKA_NODE_ID: 2
+      
+      # 进程角色：同时作为broker和controller
+      KAFKA_PROCESS_ROLES: broker,controller
+      
+      # 控制器投票者：必须与kafka-1完全相同
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093,2@kafka-2:29093,3@kafka-3:39093
+      
+      # 监听器配置：针对本节点的端口
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+      
+      # 广播监听器：告知客户端如何连接到此broker
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:29092
+      
+      # 控制器监听器名称
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # 监听器安全协议映射
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      
+      # broker间监听器名称
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # 集群ID：必须与kafka-1相同
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID_CLUSTER}
+      
+      # 集群优化配置：与kafka-1保持一致
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      
+      # JVM堆内存配置
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+    
+    # 数据卷配置
+    volumes:
+      - kafka-cluster-data-2:/var/lib/kafka/data
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ===== Kafka 节点 3 (集群成员) =====
+  kafka-3:
+    # 继承共享配置模板
+    <<: *kafka-common
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-kafka-3
+    
+    # 主机名，用于集群内部通信和服务发现
+    hostname: kafka-3
+    
+    # 端口映射：kafka-3不暴露端口到宿主机，通过内部网络访问
+    # 这样可以减少攻击面，提高安全性
+    # 如果需要在宿主机直接访问，可以取消下面的注释
+    # ports:
+    #   - "127.0.0.1:39092:39092"
+    #   - "127.0.0.1:39093:39093"
+    
+    # 环境变量配置：与kafka-1类似，但针对本节点定制
+    environment:
+      # 节点ID：在集群中唯一标识
+      KAFKA_NODE_ID: 3
+      
+      # 进程角色：同时作为broker和controller
+      KAFKA_PROCESS_ROLES: broker,controller
+      
+      # 控制器投票者：必须与kafka-1完全相同
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:19093,2@kafka-2:29093,3@kafka-3:39093
+      
+      # 监听器配置：针对本节点的端口
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:39092,CONTROLLER://0.0.0.0:39093
+      
+      # 广播监听器：告知客户端如何连接到此broker
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:39092
+      
+      # 控制器监听器名称
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # 监听器安全协议映射
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      
+      # broker间监听器名称
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # 集群ID：必须与kafka-1相同
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID_CLUSTER}
+      
+      # 集群优化配置：与kafka-1保持一致
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      
+      # JVM堆内存配置
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+    
+    # 数据卷配置
+    volumes:
+      - kafka-cluster-data-3:/var/lib/kafka/data
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+# ====================================================================================
+# 网络和存储配置
+# ====================================================================================
+
+# 网络定义：使用外部已创建的genesis-net网络
+networks:
+  genesis-net:
+    external: true
+    # 说明：genesis-net是基础设施网络，所有基础服务都在此网络中
+    # 优点：与MySQL、Redis、ETCD等基础设施服务处于同一网络，便于集成
+    # 创建命令：docker network create genesis-net
+
+# 存储卷定义：每个节点独立的数据卷
+volumes:
+  kafka-cluster-data-1:
+    # 说明：kafka-1的数据卷，存储节点1的所有主题消息和元数据
+    # 优点：与宿主机解耦，便于备份和容器迁移
+    # 管理：docker volume ls / docker volume inspect kafka-cluster-data-1
+  kafka-cluster-data-2:
+    # 说明：kafka-2的数据卷，存储节点2的所有主题消息和元数据
+  kafka-cluster-data-3:
+    # 说明：kafka-3的数据卷，存储节点3的所有主题消息和元数据
+
+# ====================================================================================
+# 使用说明和运维指南
+# ====================================================================================
+# 启动集群:
+#   docker compose -f kafka-cluster.yml up -d
+#
+# 查看集群状态:
+#   docker compose -f kafka-cluster.yml ps
+#
+# 查看控制器日志（了解集群状态）:
+#   docker compose -f kafka-cluster.yml logs -f kafka-1
+#
+# 创建高可用主题（3副本）:
+#   docker exec -it genesis-kafka-1 kafka-topics.sh --create --topic ha-topic --bootstrap-server localhost:19092 --partitions 6 --replication-factor 3
+#
+# 查看主题分布:
+#   docker exec -it genesis-kafka-1 kafka-topics.sh --describe --topic ha-topic --bootstrap-server localhost:19092
+#
+# 发送测试消息:
+#   docker exec -it genesis-kafka-1 kafka-console-producer.sh --topic ha-topic --bootstrap-server localhost:19092
+#
+# 接收测试消息:
+#   docker exec -it genesis-kafka-1 kafka-console-consumer.sh --topic ha-topic --from-beginning --bootstrap-server localhost:19092
+#
+# 查看消费者组:
+#   docker exec -it genesis-kafka-1 kafka-consumer-groups.sh --list --bootstrap-server localhost:19092
+#
+# 检查集群健康状态:
+#   docker exec -it genesis-kafka-1 kafka-topics.sh --describe --under-replicated-partitions --bootstrap-server localhost:19092
+#
+# 停止集群:
+#   docker compose -f kafka-cluster.yml down
+#
+# 滚动重启（零停机）:
+#   docker compose -f kafka-cluster.yml restart kafka-3
+#   docker compose -f kafka-cluster.yml restart kafka-2
+#   docker compose -f kafka-cluster.yml restart kafka-1
+#
+# 数据备份:
+#   # 每个节点的数据独立存储，需要分别备份
+#   docker run --rm -v kafka-cluster-data-1:/data -v $(pwd):/backup alpine tar czf /backup/kafka-data-1-backup.tar.gz /data
+#   docker run --rm -v kafka-cluster-data-2:/data -v $(pwd):/backup alpine tar czf /backup/kafka-data-2-backup.tar.gz /data
+#   docker run --rm -v kafka-cluster-data-3:/data -v $(pwd):/backup alpine tar czf /backup/kafka-data-3-backup.tar.gz /data
+#
+# 扩容说明:
+#   - 当前为3节点集群，可以容忍1个节点故障
+#   - 如需更高可用性，可以扩容到5节点（容忍2个节点故障）
+#   - 扩容需要修改所有节点的KAFKA_CONTROLLER_QUORUM_VOTERS配置
+#
+# 性能调优:
+#   - 根据吞吐量需求调整分区数
+#   - 监控网络和磁盘I/O性能
+#   - 考虑调整replica.lag.time.max.ms参数
+#   - 生产环境建议启用JMX监控
+# ====================================================================================

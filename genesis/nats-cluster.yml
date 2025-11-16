@@ -1,0 +1,253 @@
+# ====================================================================================
+# NATS 三节点集群配置文件
+# ====================================================================================
+# 描述: 用于生产环境或需要高可用性的NATS三节点集群
+# 网络: 使用 genesis-net 网络，与基础设施服务通信
+# 存储: 每个节点使用独立的Docker卷进行数据持久化
+# 访问: 仅暴露nats-1的客户端端口4222和监控端口8222到宿主机
+# 特点: 三节点集群，支持JetStream流处理，自动故障转移
+# 用途: 为应用程序提供高可用的消息队列和流处理服务
+# ====================================================================================
+
+# YAML锚点配置：定义共享配置模板，减少重复代码
+x-nats-common: &nats-common
+  # 使用官方NATS镜像，2.10-alpine版本，轻量级且稳定
+  image: nats:2.10-alpine
+  
+  # 重启策略：除非手动停止，否则总是自动重启
+  restart: unless-stopped
+  
+  # 网络配置：加入基础设施网络
+  networks:
+    - genesis-net
+  
+  # 日志配置：限制日志大小，防止磁盘空间耗尽
+  logging:
+    driver: json-file
+    options:
+      max-size: "5m"  # 单个日志文件最大5MB
+      max-file: "2"   # 保留2个日志文件，循环使用
+
+services:
+  # ===== NATS 节点 1 (主节点 + 客户端访问入口) =====
+  nats-1:
+    # 继承共享配置模板
+    <<: *nats-common
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-nats-1
+    
+    # 主机名，用于集群内部通信和服务发现
+    hostname: nats-1
+    
+    # 端口映射：仅nats-1暴露服务端口，作为集群访问入口
+    # 4222: NATS客户端端口，用于应用程序连接
+    # 8222: HTTP监控端口，提供Web界面和监控API
+    # 6222: 集群路由端口，用于节点间通信（不暴露到宿主机）
+    ports:
+      - "127.0.0.1:4222:4222"  # 客户端端口，仅本地访问
+      - "127.0.0.1:8222:8222"  # 监控端口，仅本地访问
+    # 说明：nats-2和nats-3不暴露端口，通过内部网络访问
+    
+    # 启动命令：配置NATS服务器参数
+    command:
+      # 节点名称，在集群中唯一标识
+      - "--name=nats-1"
+      
+      # 集群名称，标识这是一个集群的所有节点
+      - "--cluster_name=genesis-cluster"
+      
+      # 集群监听地址：本节点的集群通信地址
+      - "--cluster=nats://nats-1:6222"
+      
+      # 集群路由：定义所有集群节点的路由地址
+      # 包括自己，确保所有节点都能互相发现
+      - "--routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222"
+      
+      # HTTP监控端口：提供Web界面和REST API
+      - "--http_port=8222"
+      
+      # 启用JetStream：NATS的流处理功能，支持持久化消息
+      - "--js"
+      
+      # 存储目录：JetStream数据存储路径
+      - "--sd=/data"
+    
+    # 数据卷配置：数据持久化存储
+    volumes:
+      # 使用Docker卷便于备份和迁移，与宿主机解耦
+      - nats-cluster-data-1:/data
+
+  # ===== NATS 节点 2 (集群成员) =====
+  nats-2:
+    # 继承共享配置模板
+    <<: *nats-common
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-nats-2
+    
+    # 主机名，用于集群内部通信和服务发现
+    hostname: nats-2
+    
+    # 端口映射：nats-2不暴露端口到宿主机，通过内部网络访问
+    # 这样可以减少攻击面，提高安全性
+    # 如果需要在宿主机直接访问，可以取消下面的注释
+    # ports:
+    #   - "127.0.0.1:4223:4222"
+    #   - "127.0.0.1:8223:8222"
+    
+    # 启动命令：与nats-1类似，但针对本节点定制
+    command:
+      # 节点名称
+      - "--name=nats-2"
+      
+      # 集群名称：必须与nats-1相同
+      - "--cluster_name=genesis-cluster"
+      
+      # 集群监听地址：针对本节点的主机名
+      - "--cluster=nats://nats-2:6222"
+      
+      # 集群路由：必须与nats-1完全相同
+      - "--routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222"
+      
+      # HTTP监控端口
+      - "--http_port=8222"
+      
+      # 启用JetStream
+      - "--js"
+      
+      # 存储目录
+      - "--sd=/data"
+    
+    # 数据卷配置
+    volumes:
+      - nats-cluster-data-2:/data
+
+  # ===== NATS 节点 3 (集群成员) =====
+  nats-3:
+    # 继承共享配置模板
+    <<: *nats-common
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-nats-3
+    
+    # 主机名，用于集群内部通信和服务发现
+    hostname: nats-3
+    
+    # 端口映射：nats-3不暴露端口到宿主机，通过内部网络访问
+    # 这样可以减少攻击面，提高安全性
+    # 如果需要在宿主机直接访问，可以取消下面的注释
+    # ports:
+    #   - "127.0.0.1:4224:4222"
+    #   - "127.0.0.1:8224:8222"
+    
+    # 启动命令：与nats-1类似，但针对本节点定制
+    command:
+      # 节点名称
+      - "--name=nats-3"
+      
+      # 集群名称：必须与nats-1相同
+      - "--cluster_name=genesis-cluster"
+      
+      # 集群监听地址：针对本节点的主机名
+      - "--cluster=nats://nats-3:6222"
+      
+      # 集群路由：必须与nats-1完全相同
+      - "--routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222"
+      
+      # HTTP监控端口
+      - "--http_port=8222"
+      
+      # 启用JetStream
+      - "--js"
+      
+      # 存储目录
+      - "--sd=/data"
+    
+    # 数据卷配置
+    volumes:
+      - nats-cluster-data-3:/data
+
+# ====================================================================================
+# 网络和存储配置
+# ====================================================================================
+
+# 网络定义：使用外部已创建的genesis-net网络
+networks:
+  genesis-net:
+    external: true
+    # 说明：genesis-net是基础设施网络，所有基础服务都在此网络中
+    # 优点：与MySQL、Redis、ETCD、Kafka等基础设施服务处于同一网络，便于集成
+    # 创建命令：docker network create genesis-net
+
+# 存储卷定义：每个节点独立的数据卷
+volumes:
+  nats-cluster-data-1:
+    # 说明：nats-1的数据卷，存储节点1的所有JetStream数据和配置
+    # 优点：与宿主机解耦，便于备份和容器迁移
+    # 管理：docker volume ls / docker volume inspect nats-cluster-data-1
+  nats-cluster-data-2:
+    # 说明：nats-2的数据卷，存储节点2的所有JetStream数据和配置
+  nats-cluster-data-3:
+    # 说明：nats-3的数据卷，存储节点3的所有JetStream数据和配置
+
+# ====================================================================================
+# 使用说明和运维指南
+# ====================================================================================
+# 启动集群:
+#   docker compose -f nats-cluster.yml up -d
+#
+# 查看集群状态:
+#   docker compose -f nats-cluster.yml ps
+#
+# 查看集群信息:
+#   curl http://localhost:8222/varz
+#   curl http://localhost:8222/cluster
+#
+# 查看连接列表:
+#   curl http://localhost:8222/connz
+#
+# 查看路由信息:
+#   curl http://localhost:8222/routez
+#
+# 查看JetStream信息:
+#   curl http://localhost:8222/jsz
+#
+# 发布测试消息:
+#   docker run --rm --network genesis-net -it natsio/nats-box
+#   # 在容器内执行:
+#   nats pub test.subject "Hello NATS Cluster"
+#
+# 订阅测试消息:
+#   docker run --rm --network genesis-net -it natsio/nats-box
+#   # 在容器内执行:
+#   nats sub test.subject
+#
+# 查看主题列表:
+#   curl http://localhost:8222/streaming/channelsz
+#
+# 停止集群:
+#   docker compose -f nats-cluster.yml down
+#
+# 数据备份:
+#   # 每个节点的数据独立存储，需要分别备份
+#   docker run --rm -v nats-cluster-data-1:/data -v $(pwd):/backup alpine tar czf /backup/nats-data-1-backup.tar.gz /data
+#   docker run --rm -v nats-cluster-data-2:/data -v $(pwd):/backup alpine tar czf /backup/nats-data-2-backup.tar.gz /data
+#   docker run --rm -v nats-cluster-data-3:/data -v $(pwd):/backup alpine tar czf /backup/nats-data-3-backup.tar.gz /data
+#
+# 集群扩容:
+#   - 当前为3节点集群，可以容忍1个节点故障
+#   - 如需更高可用性，可以扩容到5节点（容忍2个节点故障）
+#   - 扩容需要修改所有节点的--routes配置
+#
+# 故障处理:
+#   - 如果某个节点失败，集群仍然可以提供服务（需要多数节点存活）
+#   - 重启失败的容器通常可以恢复服务
+#   - 查看日志: docker compose -f nats-cluster.yml logs 失败节点名称
+#
+# 性能调优:
+#   - 根据消息量调整内存限制
+#   - 监控网络延迟，集群对网络质量敏感
+#   - 考虑调整--max_payload参数基于消息大小
+#   - 生产环境建议启用TLS加密
+# ====================================================================================
