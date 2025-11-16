@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   new-api:
     image: calciumion/new-api:latest
@@ -22,7 +20,7 @@ services:
       - caddy
     labels:
       # Caddy 反向代理配置（请替换域名和邮箱）
-      caddy: newapi.yourdomain.com
+      caddy: api.ceyewan.xyz
       caddy.reverse_proxy: "{{upstreams 3000}}"
 
 networks:

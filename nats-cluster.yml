@@ -1,0 +1,87 @@
+services:
+  nats-1:
+    image: nats:2.10-alpine
+    container_name: genesis-nats-1
+    hostname: nats-1
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    
+    command:
+      - "--name=nats-1"
+      - "--cluster_name=genesis-cluster"
+      - "--cluster=nats://nats-1:6222"
+      - "--routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222"
+      - "--http_port=8222"
+      - "--js"
+      - "--sd=/data"
+    
+    volumes:
+      - nats-data-1:/data
+    
+    networks:
+      - genesis-net
+
+  nats-2:
+    image: nats:2.10-alpine
+    container_name: genesis-nats-2
+    hostname: nats-2
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    
+    command:
+      - "--name=nats-2"
+      - "--cluster_name=genesis-cluster"
+      - "--cluster=nats://nats-2:6222"
+      - "--routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222"
+      - "--http_port=8222"
+      - "--js"
+      - "--sd=/data"
+    
+    volumes:
+      - nats-data-2:/data
+    
+    networks:
+      - genesis-net
+
+  nats-3:
+    image: nats:2.10-alpine
+    container_name: genesis-nats-3
+    hostname: nats-3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    
+    command:
+      - "--name=nats-3"
+      - "--cluster_name=genesis-cluster"
+      - "--cluster=nats://nats-3:6222"
+      - "--routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222"
+      - "--http_port=8222"
+      - "--js"
+      - "--sd=/data"
+    
+    volumes:
+      - nats-data-3:/data
+    
+    networks:
+      - genesis-net
+
+networks:
+  genesis-net:
+    external: true
+
+volumes:
+  nats-data-1:
+  nats-data-2:
+  nats-data-3:
