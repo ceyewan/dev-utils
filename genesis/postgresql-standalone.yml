@@ -1,0 +1,178 @@
+# ====================================================================================
+# PostgreSQL 17 Alpine 配置文件
+# ====================================================================================
+# 描述: 用于开发和测试环境的PostgreSQL数据库服务
+# 网络: 使用 genesis-net 网络，与基础设施服务通信
+# 存储: 使用Docker卷进行数据持久化
+# 访问: 仅暴露客户端端口5432到宿主机，限制为127.0.0.1访问
+# 特点: 内存优化配置，支持手动安装vector扩展
+# 用途: 为应用程序提供关系型数据库服务
+# ====================================================================================
+
+services:
+  # ===== PostgreSQL 数据库服务 =====
+  postgres:
+    # 使用官方PostgreSQL 17 Alpine镜像，轻量级且稳定
+    image: postgres:17-alpine
+    
+    # 容器名称，便于识别和管理
+    container_name: genesis-postgres
+    
+    # 主机名，用于网络内部通信和服务发现
+    hostname: postgres
+    
+    # 重启策略：除非手动停止，否则总是自动重启
+    restart: unless-stopped
+    
+    # 环境变量配置：数据库初始化参数
+    environment:
+      # PostgreSQL超级用户，从环境变量读取，确保安全性
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      
+      # PostgreSQL超级用户密码，从环境变量读取
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example}
+      
+      # 默认创建的数据库名称，从环境变量读取
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    
+    # 启动命令：PostgreSQL服务器启动参数优化
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c work_mem=64MB
+      -c max_connections=50
+      -c log_min_messages=WARNING
+      -c log_min_duration_statement=1000
+    
+    # 数据卷配置：数据持久化存储
+    volumes:
+      # 使用Docker卷便于备份和迁移，与宿主机解耦
+      # 存储数据库文件、表结构、索引等所有数据
+      - postgres-data:/var/lib/postgresql/data
+    
+    # 网络配置：加入基础设施网络
+    networks:
+      - genesis-net
+    
+    # 资源限制：防止资源耗尽影响宿主机
+    deploy:
+      resources:
+        limits:
+          memory: 512M  # 最大内存限制，防止内存泄漏
+        reservations:
+          memory: 256M  # 最小内存预留，确保基本运行
+    
+    # 健康检查：定期检查服务状态
+    healthcheck:
+      # 使用pg_isready验证PostgreSQL服务可用性
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s     # 每10秒检查一次
+      timeout: 3s       # 超时时间3秒
+      retries: 3        # 失败重试3次
+      start_period: 30s # 启动等待时间，给服务充分启动时间
+    
+    # 日志配置：限制日志大小，防止磁盘空间耗尽
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"  # 单个日志文件最大5MB
+        max-file: "2"   # 保留2个日志文件，循环使用
+    
+    # 端口映射：仅暴露客户端端口，限制为本地访问
+    ports:
+      - "127.0.0.1:5432:5432"  # 仅本地访问，提高安全性
+
+# ====================================================================================
+# 网络和存储配置
+# ====================================================================================
+
+# 网络定义：使用外部已创建的genesis-net网络
+networks:
+  genesis-net:
+    external: true
+    # 说明：genesis-net是基础设施网络，所有基础服务都在此网络中
+    # 用途：为PostgreSQL与其他服务（如new-api）通信提供网络
+    # 创建命令：docker network create genesis-net
+
+# 存储卷定义：数据持久化存储
+volumes:
+  postgres-data:
+    # 说明：PostgreSQL数据卷，存储所有数据库文件和配置
+    # 优点：与宿主机解耦，便于备份和容器迁移
+    # 管理：docker volume ls / docker volume inspect postgres-data
+    # 注意：包含所有数据库数据，重要数据请定期备份
+
+# ====================================================================================
+# 使用说明和运维指南
+# ====================================================================================
+# 启动服务:
+#   docker compose -f postgresql-standalone.yml up -d
+#
+# 查看状态:
+#   docker compose -f postgresql-standalone.yml ps
+#
+# 查看日志:
+#   docker compose -f postgresql-standalone.yml logs -f
+#
+# 连接数据库:
+#   docker exec -it genesis-postgres psql -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}
+#   # 输入POSTGRES_PASSWORD环境变量中的密码
+#
+# 关于启动日志的说明:
+#   上述日志显示正常的PostgreSQL初始化过程：
+#   - 数据库集群初始化完成
+#   - 监听在5432端口
+#   - 数据库系统已准备就绪接受连接
+#   这是预期的正常行为，表示PostgreSQL已成功启动
+#
+# 启用vector扩展（需要手动执行）:
+#   1. 进入容器: docker exec -it genesis-postgres bash
+#   2. 安装依赖: apk add --no-cache gcc g++ make postgresql-dev git
+#   3. 克隆源码: git clone https://github.com/pgvector/pgvector.git /tmp/pgvector
+#   4. 编译安装: cd /tmp/pgvector && make && make install
+#   5. 启用扩展: psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+#   6. 验证安装: psql -U postgres -c "\dx" | grep vector
+#
+# 或者使用单行命令（推荐）:
+#   docker exec genesis-postgres sh -c "
+#     apk add --no-cache gcc g++ make postgresql-dev git &&
+#     git clone https://github.com/pgvector/pgvector.git /tmp/pgvector &&
+#     cd /tmp/pgvector && make && make install &&
+#     psql -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres} -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+#   "
+#
+# 创建向量表测试:
+#   CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
+#   INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
+#   SELECT * FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 5;
+#
+# 查看数据库信息:
+#   \l  # 查看所有数据库
+#   \dt # 查看所有表
+#   \d+ items # 查看表结构
+#
+# 性能监控:
+#   SELECT pg_size_pretty(pg_database_size(current_database()));
+#   SELECT count(*) FROM pg_stat_activity;
+#
+# 停止服务:
+#   docker compose -f postgresql-standalone.yml down
+#
+# 数据备份:
+#   # PostgreSQL数据存储在卷中，可以通过卷备份
+#   docker run --rm -v postgres-data:/var/lib/postgresql/data -v $(pwd):/backup alpine tar czf /backup/postgres-data-backup.tar.gz /var/lib/postgresql/data
+#
+# 数据库逻辑备份:
+#   docker exec genesis-postgres pg_dump -U ${POSTGRES_USER:-postgres} ${POSTGRES_DB:-postgres} > backup.sql
+#
+# 数据库逻辑恢复:
+#   docker exec -i genesis-postgres psql -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres} < backup.sql
+#
+# 性能调优建议:
+#   - 根据实际负载调整shared_buffers（建议为总内存的25%）
+#   - 监控连接数使用情况，必要时调整max_connections
+#   - 根据查询复杂度调整work_mem
+#   - 定期执行VACUUM和ANALYZE维护数据库
+#   - 为向量列创建合适的索引（IVFFLAT或HNSW）
+#   - 生产环境建议启用SSL加密和更复杂的认证方式
+# ====================================================================================

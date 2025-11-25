@@ -1,5 +1,5 @@
 # ====================================================================================
-# NATS 单机版配置文件
+# NATS Standalone 配置文件
 # ====================================================================================
 # 描述: 用于开发和测试环境的单节点NATS服务
 # 网络: 同时连接 genesis-net (基础设施) 和 caddy (反向代理) 网络
@@ -18,7 +18,7 @@ services:
     image: nats:2.10-alpine
     
     # 容器名称，便于识别和管理
-    container_name: genesis-nats
+    container_name: genesis-nats-standalone
     
     # 主机名，用于网络内部通信
     hostname: nats
@@ -43,7 +43,7 @@ services:
     # 数据卷配置：数据持久化存储
     volumes:
       # JetStream数据存储：使用Docker卷进行持久化
-      - nats-single-data:/data
+      - nats-standalone-data:/data
     
     # 网络配置：连接两个网络
     networks:
@@ -109,23 +109,23 @@ networks:
 
 # 存储卷定义：数据持久化存储
 volumes:
-  nats-single-data:
+  nats-standalone-data:
     # 说明：NATS数据卷，存储JetStream流数据和配置信息
     # 优点：与宿主机解耦，便于备份和容器迁移
-    # 管理：docker volume ls / docker volume inspect nats-single-data
+    # 管理：docker volume ls / docker volume inspect nats-standalone-data
     # 注意：包含所有持久化消息数据，重要数据请定期备份
 
 # ====================================================================================
 # 使用说明和运维指南
 # ====================================================================================
 # 启动服务:
-#   docker compose -f nats-single.yml up -d
+#   docker compose -f nats-standalone.yml up -d
 #
 # 查看状态:
-#   docker compose -f nats-single.yml ps
+#   docker compose -f nats-standalone.yml ps
 #
 # 查看日志:
-#   docker compose -f nats-single.yml logs -f
+#   docker compose -f nats-standalone.yml logs -f
 #
 # 访问监控界面:
 #   - 通过Caddy代理: https://nats.ceyewan.xyz
@@ -151,11 +151,11 @@ volumes:
 #   curl http://localhost:8222/jsz
 #
 # 停止服务:
-#   docker compose -f nats-single.yml down
+#   docker compose -f nats-standalone.yml down
 #
 # 数据备份:
 #   # NATS JetStream数据存储在卷中，可以通过卷备份
-#   docker run --rm -v nats-single-data:/data -v $(pwd):/backup alpine tar czf /backup/nats-data-backup.tar.gz /data
+#   docker run --rm -v nats-standalone-data:/data -v $(pwd):/backup alpine tar czf /backup/nats-data-backup.tar.gz /data
 #
 # 性能调优:
 #   - 根据消息量调整内存限制

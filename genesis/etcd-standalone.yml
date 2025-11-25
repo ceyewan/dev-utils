@@ -1,5 +1,5 @@
 # ====================================================================================
-# ETCD 单机版配置文件
+# ETCD Standalone 配置文件
 # ====================================================================================
 # 描述: 用于开发和测试环境的单节点ETCD服务
 # 网络: 使用 genesis-net 网络，与基础设施服务通信
@@ -10,15 +10,15 @@
 
 services:
   # ===== ETCD 单节点服务 =====
-  etcd-single:
+  etcd-standalone:
     # 使用官方ETCD镜像，版本3.5.12，经过充分测试的稳定版本
     image: quay.io/coreos/etcd:v3.5.12
     
     # 容器名称，便于识别和管理
-    container_name: genesis-etcd-single
+    container_name: genesis-etcd-standalone
     
     # 主机名，用于集群内部通信和服务发现
-    hostname: etcd-single
+    hostname: etcd-standalone
     
     # 重启策略：除非手动停止，否则总是自动重启
     restart: unless-stopped
@@ -29,7 +29,7 @@ services:
       ETCDCTL_API: 3
       
       # 节点名称，在集群中唯一标识
-      ETCD_NAME: etcd-single
+      ETCD_NAME: etcd-standalone
       
       # 数据存储配额，1GB大小限制，防止磁盘空间耗尽
       ETCD_QUOTA_BACKEND_BYTES: 1073741824
@@ -44,7 +44,7 @@ services:
       ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
       
       # 广告客户端地址，告知其他服务如何访问本节点
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-single:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-standalone:2379
       
       # 禁用peer通信，单机模式不需要集群通信
       ETCD_LISTEN_PEER_URLS: ""
@@ -54,7 +54,7 @@ services:
     # 数据卷配置
     volumes:
       # 数据持久化存储，使用Docker卷便于备份和迁移
-      - etcd-single-data:/etcd-data
+      - etcd-standalone-data:/etcd-data
     
     # 端口映射：仅暴露客户端端口，限制为本地访问
     ports:
@@ -100,37 +100,37 @@ networks:
 
 # 存储卷定义：数据持久化存储
 volumes:
-  etcd-single-data:
+  etcd-standalone-data:
     # 说明：ETCD数据卷，存储所有键值数据
     # 优点：与宿主机解耦，便于备份和容器迁移
-    # 管理：docker volume ls / docker volume inspect etcd-single-data
+    # 管理：docker volume ls / docker volume inspect etcd-standalone-data
 
 # ====================================================================================
 # 使用说明
 # ====================================================================================
 # 启动服务:
-#   docker compose -f etcd-single.yml up -d
+#   docker compose -f etcd-standalone.yml up -d
 #
 # 查看状态:
-#   docker compose -f etcd-single.yml ps
+#   docker compose -f etcd-standalone.yml ps
 #
 # 查看日志:
-#   docker compose -f etcd-single.yml logs -f
+#   docker compose -f etcd-standalone.yml logs -f
 #
 # 执行命令:
-#   docker exec -it genesis-etcd-single etcdctl member list
-#   docker exec -it genesis-etcd-single etcdctl endpoint health
-#   docker exec -it genesis-etcd-single etcdctl put mykey "my value"
-#   docker exec -it genesis-etcd-single etcdctl get mykey
+#   docker exec -it genesis-etcd-standalone etcdctl member list
+#   docker exec -it genesis-etcd-standalone etcdctl endpoint health
+#   docker exec -it genesis-etcd-standalone etcdctl put mykey "my value"
+#   docker exec -it genesis-etcd-standalone etcdctl get mykey
 #
 # 停止服务:
-#   docker compose -f etcd-single.yml down
+#   docker compose -f etcd-standalone.yml down
 #
 # 数据备份:
-#   docker exec -it genesis-etcd-single etcdctl snapshot save /etcd-data/backup.db
-#   docker cp genesis-etcd-single:/etcd-data/backup.db ./backup.db
+#   docker exec -it genesis-etcd-standalone etcdctl snapshot save /etcd-data/backup.db
+#   docker cp genesis-etcd-standalone:/etcd-data/backup.db ./backup.db
 #
 # 数据恢复:
-#   docker cp ./backup.db genesis-etcd-single:/etcd-data/backup.db
-#   docker exec -it genesis-etcd-single etcdctl snapshot restore /etcd-data/backup.db
+#   docker cp ./backup.db genesis-etcd-standalone:/etcd-data/backup.db
+#   docker exec -it genesis-etcd-standalone etcdctl snapshot restore /etcd-data/backup.db
 # ====================================================================================

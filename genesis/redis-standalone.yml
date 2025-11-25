@@ -1,5 +1,5 @@
 # ====================================================================================
-# Redis 7.2 配置文件
+# Redis 7.2 Standalone 配置文件
 # ====================================================================================
 # 描述: 用于开发和测试环境的Redis内存数据库服务
 # 网络: 使用 genesis-net 网络，与基础设施服务通信
@@ -16,10 +16,10 @@ services:
     image: redis:7.2-alpine
     
     # 容器名称，便于识别和管理
-    container_name: genesis-redis
+    container_name: genesis-redis-standalone
     
     # 主机名，用于网络内部通信和服务发现
-    hostname: redis
+    hostname: redis-standalone
     
     # 重启策略：除非手动停止，否则总是自动重启
     restart: unless-stopped
@@ -111,42 +111,42 @@ volumes:
 # 使用说明和运维指南
 # ====================================================================================
 # 启动服务:
-#   docker compose -f redis.yml up -d
+#   docker compose -f redis-standalone.yml up -d
 #
 # 查看状态:
-#   docker compose -f redis.yml ps
+#   docker compose -f redis-standalone.yml ps
 #
 # 查看日志:
-#   docker compose -f redis.yml logs -f
+#   docker compose -f redis-standalone.yml logs -f
 #
 # 连接Redis:
-#   docker exec -it genesis-redis redis-cli -a ${REDIS_PASSWORD}
+#   docker exec -it genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD}
 #   # 输入REDIS_PASSWORD环境变量中的密码
 #
 # 测试连接:
-#   docker exec genesis-redis redis-cli -a ${REDIS_PASSWORD} ping
+#   docker exec genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD} ping
 #   # 应该返回 PONG
 #
 # 查看信息:
-#   docker exec genesis-redis redis-cli -a ${REDIS_PASSWORD} info
-#   docker exec genesis-redis redis-cli -a ${REDIS_PASSWORD} info memory
-#   docker exec genesis-redis redis-cli -a ${REDIS_PASSWORD} info stats
+#   docker exec genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD} info
+#   docker exec genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD} info memory
+#   docker exec genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD} info stats
 #
 # 数据操作测试:
-#   docker exec -it genesis-redis redis-cli -a ${REDIS_PASSWORD}
+#   docker exec -it genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD}
 #   # 在Redis客户端中执行:
 #   SET testkey "Hello Redis"
 #   GET testkey
 #   DEL testkey
 #
 # 查看内存使用:
-#   docker exec genesis-redis redis-cli -a ${REDIS_PASSWORD} info memory | grep used_memory_human
+#   docker exec genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD} info memory | grep used_memory_human
 #
 # 查看客户端连接:
-#   docker exec genesis-redis redis-cli -a ${REDIS_PASSWORD} client list
+#   docker exec genesis-redis-standalone redis-cli -a ${REDIS_PASSWORD} client list
 #
 # 停止服务:
-#   docker compose -f redis.yml down
+#   docker compose -f redis-standalone.yml down
 #
 # 数据备份:
 #   # Redis数据存储在卷中，可以通过卷备份

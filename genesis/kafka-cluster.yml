@@ -4,7 +4,7 @@
 # 描述: 用于生产环境或需要高可用性的Kafka三节点集群
 # 网络: 使用 genesis-net 网络，与基础设施服务通信
 # 存储: 每个节点使用独立的Docker卷进行数据持久化
-# 访问: 仅暴露kafka-1的客户端端口19092到宿主机，其他节点通过内部网络访问
+# 访问: 仅暴露kafka-1的客户端端口9092到宿主机，其他节点通过内部网络访问
 # 特点: 三节点集群，支持数据复制和故障转移，使用KRaft模式
 # 用途: 为应用程序提供高可用的分布式消息队列服务
 #
@@ -14,8 +14,8 @@
 
 # YAML锚点配置：定义共享配置模板，减少重复代码
 x-kafka-common: &kafka-common
-  # 使用官方Apache Kafka镜像，latest标签获取最新稳定版本
-  image: apache/kafka:latest
+  # 使用官方Apache Kafka镜像
+  image: apache/kafka:3.9.0
   
   # 重启策略：除非手动停止，否则总是自动重启
   restart: unless-stopped
@@ -82,8 +82,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      # 使用主机名，便于集群内其他容器访问（宿主机通过端口映射访问）
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
+      # 使用主机名，便于集群内通信
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,CONTROLLER://kafka-1:9093
       
       # 控制器监听器名称：指定用于控制器通信的监听器
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -146,7 +146,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092
+      # 使用主机名，便于集群内通信
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092,CONTROLLER://kafka-2:9093
       
       # 控制器监听器名称
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -208,7 +209,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       
       # 广播监听器：告知客户端如何连接到此broker
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9092
+      # 使用主机名，便于集群内通信
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9092,CONTROLLER://kafka-3:9093
       
       # 控制器监听器名称
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -273,22 +275,22 @@ volumes:
 #   docker compose -f kafka-cluster.yml logs -f kafka-1
 #
 # 创建高可用主题（3副本）:
-#   docker exec -it genesis-kafka-1 kafka-topics.sh --create --topic ha-topic --bootstrap-server localhost:19092 --partitions 6 --replication-factor 3
+#   docker exec -it genesis-kafka-1 kafka-topics.sh --create --topic ha-topic --bootstrap-server localhost:9092 --partitions 6 --replication-factor 3
 #
 # 查看主题分布:
-#   docker exec -it genesis-kafka-1 kafka-topics.sh --describe --topic ha-topic --bootstrap-server localhost:19092
+#   docker exec -it genesis-kafka-1 kafka-topics.sh --describe --topic ha-topic --bootstrap-server localhost:9092
 #
 # 发送测试消息:
-#   docker exec -it genesis-kafka-1 kafka-console-producer.sh --topic ha-topic --bootstrap-server localhost:19092
+#   docker exec -it genesis-kafka-1 kafka-console-producer.sh --topic ha-topic --bootstrap-server localhost:9092
 #
 # 接收测试消息:
-#   docker exec -it genesis-kafka-1 kafka-console-consumer.sh --topic ha-topic --from-beginning --bootstrap-server localhost:19092
+#   docker exec -it genesis-kafka-1 kafka-console-consumer.sh --topic ha-topic --from-beginning --bootstrap-server localhost:9092
 #
 # 查看消费者组:
-#   docker exec -it genesis-kafka-1 kafka-consumer-groups.sh --list --bootstrap-server localhost:19092
+#   docker exec -it genesis-kafka-1 kafka-consumer-groups.sh --list --bootstrap-server localhost:9092
 #
 # 检查集群健康状态:
-#   docker exec -it genesis-kafka-1 kafka-topics.sh --describe --under-replicated-partitions --bootstrap-server localhost:19092
+#   docker exec -it genesis-kafka-1 kafka-topics.sh --describe --under-replicated-partitions --bootstrap-server localhost:9092
 #
 # 停止集群:
 #   docker compose -f kafka-cluster.yml down
