@@ -10,7 +10,7 @@
 
 services:
   # ===== ETCD 单节点服务 =====
-  etcd-standalone:
+  etcd:
     # 使用官方ETCD镜像，版本3.5.12，经过充分测试的稳定版本
     image: quay.io/coreos/etcd:v3.5.12
     

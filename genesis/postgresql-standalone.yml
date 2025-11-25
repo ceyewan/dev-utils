@@ -16,7 +16,7 @@ services:
     image: postgres:17-alpine
     
     # 容器名称，便于识别和管理
-    container_name: genesis-postgres
+    container_name: genesis-postgres-standalone
     
     # 主机名，用于网络内部通信和服务发现
     hostname: postgres
